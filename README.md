@@ -20,3 +20,7 @@ The recording script works as the server, it is running in first place. I have t
 Afterthat, I run python record_and_save_dataset.py -i ... -o ..., -i indicates the name (number) of the first image for both sensors, and -o indicates the object (1,2,3,...). The image name follow this format: idxSensor_name.jpg. For example, a sensor with idx 50 and image number 1: 50_1.jpg.
 
 The first script is waiting until I execute the second one (rosrun package script). Then, the whole process starts and everything would work fine!
+
+# Grasping poses
+
+In the folder "grasping poses", you can find the pose of each object. There are some repeated poses because the object produces the same contact in different poses.

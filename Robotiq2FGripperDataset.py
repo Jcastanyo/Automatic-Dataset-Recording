@@ -133,6 +133,16 @@ def callback(msg):
 
 
 def publish(pub, command):
+
+    """
+        This function publishes a close/open command during 0.5 seconds. Thus, we
+        ensure that the message is published.
+
+        -Arguments:
+            -pub: ros publisher.
+            -command: Robotiq2fGripper output message.
+    """
+
     a = time.time()
     b = time.time()
 
@@ -141,32 +151,66 @@ def publish(pub, command):
         b = time.time()
 
 
+def init_comms(str_port):
+    """
+        Initialises communications with robotiq gripper.
+
+        -Arguments:
+            -str_port: String representing the number of the port.
+        
+        Returns: The number of the port (string) and the object of the server that
+        allows us to send and read msgs.
+    """
+
+    port = str_port
+    context_socket = zmq.Context()
+    client = context_socket.socket(zmq.REQ)
+    client.connect("tcp://localhost:%s" % port)
+
+    return port, client
+
+
 def main():
-    # use log_leve = rospy.DEBUG for debugging.
-    # rospy.init_node("comm_test", log_level=rospy.DEBUG)
+
+    # init ros node
     rospy.init_node('Robotiq2FGripperDataset')
     
+    # create ros publisher with Robotiq2FGripper output message
     pub = rospy.Publisher('Robotiq2FGripperRobotOutput', outputMsg.Robotiq2FGripper_robot_output)
 
+    # create ros subscriber to read Robotiq2FGripper input message
     sub = rospy.Subscriber('Robotiq2FGripperRobotInput', inputMsg.Robotiq2FGripper_robot_input, callback)
 
+    # some kind of logging to check that everything is working as it should do
     rospy.loginfo("HEY! I'M USING ROS!")
 
+    # variables
+    # graspings -> number of poses of the object in which we want to record tactile
+    # data
     graspings = 3
+    # we call iteration the process of closing, holding and openinig the gripper. So,
+    # iters_per_grasping is the number of times this process is repeated in the same
+    # grasping.
     iters_per_grasping = 7
+    # time per iter is the duration of an iteration. We can calculate it by adding the 
+    # duration of rospy sleeps plus publish functions. In this case, we have two publish
+    # functions (0.5x2) and rospy sleeps (0.5+1+0.5+1). Total = 4 seconds.
     time_per_iter = 4
+    # time per grasping is the total duration per pose. We use this variable to set 
+    # a progress bar. This variable helps us to know when we have to change the pose
+    # of the object.
     time_per_grasping = iters_per_grasping*time_per_iter # seconds
+    # time between graspings is the duration we have to change the pose of the object.
     time_between_graspings = 7
+    # In this case, we set graspings=3. Then, we save maximum closure of the gripper 
+    # of each pose of the object. We need these values to close the gripper automatically.
     max_grasping = [90, 100, 100]
+    # number of iterations between graspings
     cycles = 0
 
-
-    PORT = "5556"
-
-    context = zmq.Context()
-    client = context.socket(zmq.REQ)
-
-    client.connect("tcp://localhost:%s" % PORT)
+    
+    # start comms between recording script and current script
+    port, client = init_comms("5556")
     
 
     for grasp in range(graspings):
@@ -181,15 +225,16 @@ def main():
 
             while (b-a) < time_per_grasping: # each iteration lasts 4 seconds
                 
+                # exit
                 if rospy.is_shutdown():
                     print('shutdown')
                     break
 
-                #c = time.time()
                 # close
                 print("closing...")
                 command = close_gripper(max_grasping[grasp])  
                 publish(pub, command)
+                # here we tell the recording script to start recording.
                 client.send_pyobj(1)    
                 data = client.recv_pyobj()
                 rospy.sleep(0.5)
@@ -216,20 +261,23 @@ def main():
                 b = time.time()
 
                 pbar_one_grasp()
-                #print(b-c)
+
                 cycles += 1
                 
         print("Cycles: {}".format(cycles))
 
         if grasp < graspings-1:
+            # open the gripper to change the object's pose easily.
             command = open_gripper(255)
             publish(pub, command)
+            # progress bar to see the time we have to change the pose.
             with alive_bar(5, title="CHANGE OF GRASPING!!") as pbar_change_grasping:
                 for i in range(5):
                     time.sleep(1)
                     pbar_change_grasping()
             
 
+    # open the gripper when we finish and send the recording script to its end.
     command = open_gripper(255)
     publish(pub, command)
     client.send_pyobj(5)
